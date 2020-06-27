@@ -1,7 +1,10 @@
 #include "6502.h"
+#include "ppu.h"
 
 uint8_t internal_ram[0x800] ; // NES only has 2KB of internal RAM from 0000 to 07FFF
 uint8_t cartridge_mem [0xBFE0] ;
+extern uint8_t pattern_tables [2][0x1000] ;
+extern ppu_state nes_ppu ;
 
 // we can't write a single function for the read and write because some reads and writes trigger special behavior
 // on the ships that can't be predicted if we simply return a pointer to the location for reading and writing
@@ -12,7 +15,27 @@ uint8_t cpu_read ( uint16_t address )
 
     else if ( address >= 0x2000 && address <= 0x3FFF ) // PPU registers
     {
-        //TODO : implement the ppu register logic
+        address &= 0x2000 ;
+        switch ( address ) {
+            case 0: // control register
+                break ;
+            case 1: // mask register
+                break;
+            case 2: // status register
+                break ;
+            case 3: // oam address register
+                break ;
+            case 4: // oam data register
+                break ;
+            case 5: // ppu scroll register
+                break ;
+            case 6: // ppu address register
+                break ;
+            case 7: // ppu data register
+                break ;
+            default:
+                break ;
+        }
         return 0;
     }
     else if ( address >= 4000 && address <= 0x401F ) // NES APU and audio
@@ -31,8 +54,30 @@ void cpu_write ( uint16_t address , uint8_t data )
 
     else if ( address >= 0x2000 && address <= 0x3FFF ) // PPU registers
     {
-        //TODO : implement the ppu register logic
-        return;
+        address &= 0x2000 ;
+        switch ( address ) {
+            case 0: // control register
+                nes_ppu.ctrl.p_ctrl = data ;
+                break ;
+            case 1: // mask register
+                nes_ppu.mask.p_mask = data ;
+                break;
+            case 2: // status register
+                break ;
+            case 3: // oam address register
+                break ;
+            case 4: // oam data register
+                break ;
+            case 5: // ppu scroll register
+                break ;
+            case 6: // ppu address register
+                break ;
+            case 7: // ppu data register
+                break ;
+            default:
+                break ;
+        }
+        return ;
     }
     else if ( address >= 4000 && address <= 0x401F ) // NES APU and audio
     {
@@ -66,10 +111,10 @@ void load_cartridge ( FILE *fp )
             else // NROM-128
                 memcpy (cartridge_mem + 0x7FE0 , cartridge_mem + 0x3FE0 , 0x4000 ) ;
 
-            /*
             // map character rom or ram to ppu
-            for ( int i = 0 ; i < 0x2000 ; i++ )
-                pattern_tables[i] = getc(fp) ;
-            break ; */
+            for ( int b = 0 ; b < 2 ; ++b )
+                for ( int i = 0 ; i < 0x1000 ; i++ ) // copy the 8KB to the pattern tables
+                    pattern_tables[b][i] = getc(fp) ;
+            break ;
     }
 }

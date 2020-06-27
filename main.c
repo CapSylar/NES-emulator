@@ -1,6 +1,10 @@
 #include "6502.h"
+#include "ppu.h"
+#include "interface.h"
 
 cpu_6502 cpu;
+
+bool halt ;
 
 int main(int argc, char **argv) {
     if (argc < 2) {
@@ -17,16 +21,21 @@ int main(int argc, char **argv) {
     }
 
     load_cartridge(fp);
-    fclose(fp);
+     fclose(fp);
 
     cpu.pc = 0xC000; // start of cartridge memory space
     cpu.sr.i = 1; // for nestest rom
     cpu.sp = 0xFD;
 
-//    reset_cpu() ;
+    reset_cpu() ;
+    if ( init_interface() )
+        return EXIT_FAILURE ;
 
-    for (int i = 0; i < 8900; i++)
-        execute_opcode();
+    while ( !halt )
+    {
+        update_interface();
+        execute_opcode() ;
+    }
 
     return EXIT_SUCCESS;
 }

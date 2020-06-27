@@ -1,31 +1,14 @@
 #include "6502.h"
+#include "ppu.h"
 
 uint8_t pattern_tables[2][0x1000] ;
 uint8_t p_oam [256] ;
 uint8_t s_oam [64] ;
-uint8_t nametables[0x2000];
+extern uint8_t nametables[0x2000];
 uint8_t palette[0x20];
 
-typedef struct
-{
-    bool odd_cycle ;
-    int scanline ;
+ppu_state nes_ppu ;
 
-    uint8_t shift_reg[8];
-    uint8_t latches[8];
-    uint8_t x_pos[8];
-/*
-    uint8_t *ppu_ctrl = internal_ram + 0x2000 ;
-    uint8_t *ppu_mask = internal_ram + 0x2001 ;
-    uint8_t *ppu_status = internal_ram + 0x2002 ;
-    uint8_t *oam_addr = internal_ram + 0x2003 ;
-    uint8_t *oam_data = internal_ram + 0x2004 ;
-    uint8_t *ppu_scroll = internal_ram + 0x2005 ;
-    uint8_t *ppu_addr = internal_ram + 0x2006 ;
-    uint8_t *ppu_data = internal_ram + 0x2007 ;
-    uint8_t *oam_dma = internal_ram + 0x2008 ; */
-
-} ppu_state ;
 /*
 
 uint8_t* ppu_rw ( uint16_t address )
@@ -43,7 +26,6 @@ uint8_t* ppu_rw ( uint16_t address )
 }
 */
 
-
 uint8_t ppu_read ( uint16_t address ) // 14 lines are actually used
 {
     if ( address >= 0 && address <= 0x1FFF ) // pattern tables
@@ -52,7 +34,7 @@ uint8_t ppu_read ( uint16_t address ) // 14 lines are actually used
     {
         //TODO: map the nametables for the ppu bus
     }
-    else if ( address >= 0x3F00 && address <= 0x3FFF ) // palette RAM indexes
+    else if ( address >= 0x3F00 && address <= 0x3FFF ) // palette RAM indexes and mirrors
     {
 
     }
