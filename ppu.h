@@ -1,19 +1,11 @@
 #ifndef __PPU_H__
 #define __PPU_H__
-
 #include <inttypes.h>
-/*
-enum ppu_ctrl
-{
-    nametable_addr = 3 , // base nametable address
-    addr_inc = 4 , // VRAM address increment per CPU read/write of PPUDATA
-    sprite_patt = 8 , // Sprite pattern table address for 8x8 sprites
-    backg_tab = 16, // Background pattern table address (0: $0000; 1: $1000)
-    sprite_size = 32 , // Sprite size (0: 8x8 pixels; 1: 8x16 pixels)
-    ppu_ms = 64 , // PPU master/slave select
-    gen_nmi = 128 , // Generate an NMI at the start of the
-} ;
-*/
+
+uint8_t ppu_read ( uint16_t address )  ;
+void ppu_write ( uint16_t address , uint8_t data ) ;
+void ppu_clock () ;
+void reset_ppu() ;
 
 union ppu_ctrl
 {
@@ -63,7 +55,7 @@ typedef union ppu_mask ppu_mask ;
 
 typedef struct {
     bool odd_cycle;
-    int scanline;
+    int dot_counter , scanline ;
 
     uint8_t shift_reg[8];
     uint8_t latches[8];
@@ -74,7 +66,16 @@ typedef struct {
     ppu_status status ;
     ppu_mask mask ;
 
+    // internals
+
+    uint8_t address_latch ;
+    uint8_t ppu_data_buffer ;
+    uint16_t ppu_address ;
+
 } ppu_state ;
+
+// color palette rom
+
 
 #endif
 
