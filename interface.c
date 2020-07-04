@@ -2,17 +2,39 @@
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_timer.h>
-#include <SDL2/SDL_image.h>
+
+#include "SDL_ttf.h"
 #include <stdbool.h>
 
 #include "interface.h"
+#include "mapper.h"
+#include "ppu.h"
+
+extern reader mapper_cpu_read , mapper_ppu_read ;
+extern writer mapper_cpu_write , mapper_ppu_write ;
+
+extern uint32_t color_table[] ;
 
 extern bool halt;
-extern uint8_t pattern_tables [2][0x1000] ;
+extern uint8_t palette[0x20];
 
-uint32_t pixels [W*H] ;
+uint32_t pattern0_dp [W * H] ;
+uint32_t pattern1_dp [W * H] ;
+uint32_t screen [256 * 240] ;
+
 SDL_Texture *texture;
+SDL_Texture *texture1;
+SDL_Texture *texture2;
+
+SDL_Surface *surface;
+SDL_Surface *surface1;
+SDL_Surface *surface2;
+
 SDL_Renderer *renderer ;
+
+SDL_Rect pat0 , pat1 , screen0 ;
+
+void copy_main_display();
 
 int init_interface()
 {
@@ -22,13 +44,23 @@ int init_interface()
         return 1 ;
     }
 
-    SDL_Window *window = SDL_CreateWindow( "testing", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, W * 4, H * 4,
-                                          SDL_WINDOW_RESIZABLE);
+    if ( TTF_Init() == -1 )
+    {
+        fprintf(stderr , "error: %s", SDL_GetError());
+        exit(1);
+    }
+
+    // fuck this mess TODO: fix the mess in the interface
+    pat0 = ( SDL_Rect ) { 0 , 0 , W * SCALE_F, H * SCALE_F } ;
+    pat1 = ( SDL_Rect ) { W * SCALE_F , 0 , W * SCALE_F , H * SCALE_F } ;
+    screen0 = ( SDL_Rect ) { 0 , H * SCALE_F , 256 * SCALE_F , 240 * SCALE_F } ;
+
+
+    SDL_Window *window = SDL_CreateWindow( "testing", SDL_WINDOWPOS_UNDEFINED,
+                            SDL_WINDOWPOS_UNDEFINED, 2 * W * SCALE_F  , (H + 240) * SCALE_F ,
+                                          0);
     renderer = SDL_CreateRenderer(window, -1, 0);
-    texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, W, H);
-    SDL_UpdateTexture( texture , NULL , pixels , W*4 ) ;
-    SDL_RenderCopy( renderer , texture , NULL , NULL ) ;
-    SDL_RenderPresent( renderer ) ;
+
     return 0 ;
 }
 
@@ -62,35 +94,79 @@ void update_interface ()
     else
     {
         copy_pattern_table() ;
-        SDL_UpdateTexture( texture , NULL , pixels , W*4 ) ;
-        SDL_RenderCopy( renderer , texture , NULL , NULL ) ;
+        copy_main_display();
+
+        surface = SDL_CreateRGBSurfaceFrom( pattern0_dp , W , H , 32 , W * 4 ,
+                                            0x00FF0000 ,0x0000FF00 , 0x000000FF , 0xFF000000) ;
+        surface1 = SDL_CreateRGBSurfaceFrom( pattern1_dp , W , H , 32 , W * 4 ,
+                                            0x00FF0000 ,0x0000FF00 , 0x000000FF , 0xFF000000) ;
+        surface2 = SDL_CreateRGBSurfaceFrom( screen , 256 , 240 , 32 , 256 * 4 ,
+                                             0x00FF0000 ,0x0000FF00 , 0x000000FF , 0xFF000000) ;
+        texture = SDL_CreateTextureFromSurface( renderer , surface ) ;
+        texture1 = SDL_CreateTextureFromSurface( renderer , surface1 ) ;
+        texture2 = SDL_CreateTextureFromSurface( renderer , surface2 ) ;
+        SDL_FreeSurface(surface) ;
+        SDL_FreeSurface(surface1) ;
+        SDL_FreeSurface(surface2) ;
+
+        SDL_RenderCopy( renderer , texture , NULL , &pat0 ) ;
+        SDL_RenderCopy( renderer , texture1 , NULL , &pat1 ) ;
+        SDL_RenderCopy( renderer , texture2 , NULL , &screen0 ) ;
         SDL_RenderPresent( renderer ) ;
+
     }
 }
 
-void copy_pattern_table()
+void copy_main_display()
 {
-    uint32_t palette[] = { 0x00000000 , 0x00FF0000 , 0x0000FF00 , 0x000000FF };
-//    uint32_t bit_0 = 0x00000000 ; // black
-//    uint32_t bit_1 = 0x00FF0000 ; //red
-//    uint32_t bit_2 = 0x0000FF00 ; //green
-//    uint32_t bit_3 = 0x000000FF ; // blue
-
-    // for now we will copy only the first pattern table
-    int offset = 0 ;
-
-    for ( uint16_t current = 0 ; current < 0x1000 ; ++current )
+    // this is where we render the display for now
+    for ( int y = 0 ; y < 30 ; ++y )
     {
-        for ( int i = 0 ; i < 8 ; ++i )
+        for (int x = 0; x < 32 ; ++x)
         {
-            int bit =
-                    ((pattern_tables[0][current] >> (7 - i % 8)) & 0x1) | (((pattern_tables[0][current + 8] >> (7 - i % 8)) & 0x1) << 1) ;
-            pixels[offset++] = palette[bit];
-        }
+            uint8_t offset = mapper_ppu_read( 0x2000 + y * 32 + x );
+            for (uint16_t row = 0; row < 8; ++row)
+            {
+                uint8_t tile_lsb0 = mapper_ppu_read(0x1000 + offset * 16 + row); // 16 to skip pane1
+                uint8_t tile_msb0 = mapper_ppu_read(0x1000 + offset * 16 + row + 8);
 
-        if ( (current & 0x000F )== 7 ) // jump over second color pane
-        {
-            current += 8 ;
+                for (uint16_t col = 0; col < 8; ++col)
+                {
+                    uint8_t pixel0 = (tile_lsb0 & 0x01) + (tile_msb0 & 0x01) * 2;
+                    tile_lsb0 >>= 1;
+                    tile_msb0 >>= 1;
+
+                    screen[x * 8 + (7 - col) + (y * 8 + row) * 256] = color_table[ppu_read(0x3F00 + pixel0)];
+                }
+            }
         }
     }
+}
+void copy_pattern_table()
+{
+    for ( uint16_t tileY = 0 ; tileY < 16 ; ++tileY )
+        for ( uint16_t tileX = 0 ; tileX < 16 ; ++tileX )
+        {
+            uint16_t offset = tileY * 256 + tileX * 16 ;
+
+            for ( uint16_t row = 0 ; row < 8 ; ++row )
+            {
+                uint8_t tile_lsb0 = mapper_ppu_read(offset + row) ;
+                uint8_t tile_msb0 = mapper_ppu_read(offset + row + 8);
+                uint8_t tile_lsb1 = mapper_ppu_read( 0x1000 + offset + row);
+                uint8_t tile_msb1 = mapper_ppu_read( 0x1000 + offset + row +8) ;
+
+                for ( uint16_t col = 0 ; col < 8 ; ++col )
+                {
+                    uint8_t pixel0 = (tile_lsb0 & 0x01 ) + (tile_msb0 & 0x01) * 2 ;
+                    tile_lsb0 >>= 1 ; tile_msb0 >>= 1 ;
+
+                    uint8_t pixel1 = (tile_lsb1 & 0x01 ) + (tile_msb1 & 0x01) * 2 ;
+                    tile_lsb1 >>= 1 ; tile_msb1 >>= 1 ;
+
+                    pattern0_dp[tileX * 8 + (7 - col) + (tileY * 8 + row ) * 128 ] = color_table[palette[pixel0]] ;
+                    pattern1_dp[tileX * 8 + (7 - col) + (tileY * 8 + row ) * 128 ] = color_table[palette[pixel1]] ;
+                }
+            }
+        }
 }

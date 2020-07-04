@@ -135,10 +135,12 @@ void load_program ( FILE *fp , int prog_start ) ;
 //uint8_t *cpu_bus_rw ( uint16_t address ) ;
 void print_status ( int pc , uint8_t opcode ) ;
 void load_cartridge ( FILE *fp ) ;
-void execute_opcode () ;
+void cpu_clock () ;
 uint8_t cpu_read ( uint16_t address ) ;
 void cpu_write ( uint16_t address , uint8_t data ) ;
 void reset_cpu() ;
-
+void clock_system() ;
+void exec_irq() ;
+void exec_nmi() ;
 
 #endif

@@ -1,6 +1,13 @@
 // this cpu is developed for an NES emulator and thus the actual cpu name is 2A03
 // which is a 6502 cpu lacking a decimal mode
 
+/*   ____  ______  ______   ____
+    /  _/_/\  __/_/\  __ \ /\_, \
+   /\  __ \ \___  \ \ \/\ \\//  /__
+   \ \_____\/\____/\ \_____\/\_____\
+    \/_____/\/___/  \/_____/\/_____/
+*/
+
 #include "6502.h"
 
 #define ADDRESS ( (uint16_t) cpu_read(cpu.pc+1) << 8 | cpu_read(cpu.pc) )
@@ -25,26 +32,36 @@
                         } } ;
 
 extern cpu_6502 cpu ;
+extern bool nmi ;
 
 int cycles ;
+int cur_cycles ;
 
 static uint8_t pack ( struct sr *current ) ;
 static void unpack ( struct sr *current , uint8_t packed ) ;
 
-void execute_opcode ()
+void cpu_clock ()
 {
+    if ( cur_cycles-- > 0 ) // wait the remaining cycles
+        return ;
+    if ( nmi )
+    {
+        exec_nmi();
+        return;
+    }
+
     int pc = cpu.pc ;
+
     uint8_t opcode = cpu_read(cpu.pc++) ; // read an instruction
     uint16_t operand = 0 , temp = 0 ;
     uint8_t b_offset = 0 ; // has to be signed since branching can be done back and forth
     // first we have to determine the addressing mode
 
-    if ( opcode == 0 ) // for debugging only
-        exit(0) ;
+    //print_status ( pc , opcode) ;
 
-    print_status ( pc , opcode) ;
+    cur_cycles = inst_cycle[opcode] ;
+    cycles += cur_cycles-- ;  // -1 for the current pass
 
-    cycles += inst_cycle[opcode] ;
     switch ( inst_mode[opcode] )
     {
         case absolute :
@@ -94,7 +111,7 @@ void execute_opcode ()
             operand = cpu_read(cpu.pc++);
             break ;
         case zero_p_x :
-            operand = cpu_read(cpu.pc++ ) + cpu.x_reg & 0xFF ; // it has to wrap around zero page
+            operand = cpu_read(cpu.pc++) + cpu.x_reg & 0xFF ; // it has to wrap around zero page
             break ;
         case zero_p_y :
             operand = cpu_read(cpu.pc++ ) + cpu.y_reg & 0xFF  ;
@@ -157,7 +174,7 @@ void execute_opcode ()
             break ;
         case 0x00: // BRK force break
             // write pc then sr to stack
-            PUSH_D(cpu.pc);
+            PUSH_D(cpu.pc + 1); // we already incremented 1
             cpu.sr.b = 1; // for BRK and PHP
             uint8_t brk_temp = pack(&cpu.sr);
             PUSH_S(brk_temp);
@@ -297,6 +314,7 @@ void execute_opcode ()
             PUSH_S ( cpu.a_reg ) ;
             break ;
         case 0x08: // PHP push processor status on stack
+            cpu.sr.b = 1 ; // set break
             b_offset = pack( &cpu.sr ) ;
             PUSH_S ( b_offset ) ;
             break ;
@@ -355,7 +373,6 @@ void execute_opcode ()
             temp = cpu.a_reg + cpu.sr.c ;
             b_offset = ( opcode == 0xE9 || opcode == 0xEB ) ? ~operand : ~cpu_read(operand) ;
             temp += b_offset ;
-            cpu.a_reg += cpu.sr.c ;
             cpu.sr.v = (0x80 & ( temp ^ cpu.a_reg ) & ( b_offset ^ temp )) >> 7;
             set_flags ( temp , 7 ) ;
             cpu.a_reg = temp ;
@@ -471,9 +488,8 @@ void execute_opcode ()
             b_offset = cpu_read(operand);
             cpu_write( operand , ++b_offset );
             temp = cpu.a_reg + cpu.sr.c ;
-            b_offset = ( opcode == 0xE9 || opcode == 0xEB ) ? ~operand : ~cpu_read(operand) ;
+            b_offset = ~(b_offset) ;
             temp += b_offset ;
-            cpu.a_reg += cpu.sr.c ;
             cpu.sr.v = (0x80 & ( temp ^ cpu.a_reg ) & ( b_offset ^ temp )) >> 7;
             set_flags ( temp , 7 ) ;
             cpu.a_reg = temp ;
@@ -488,9 +504,11 @@ void reset_cpu()
     cpu.sp = 0xFD ;
     // reset vector is located at 0xFFFC and 0xFFFD
     cpu.pc = cpu_read(0xFFFC) | (cpu_read(0xFFFD) << 8) ;
+
+//    cpu.pc = 0xC000 ; // for nestest
 }
 
-void IRQ()
+void exec_irq()
 {
     if ( !cpu.sr.i )
     {
@@ -503,12 +521,13 @@ void IRQ()
         // interrupt request vector is at 0xFFFE and 0xFFFF
         cpu.pc = cpu_read(0xFFFE) | (cpu_read(0xFFFF) << 8) ;
 
+        cur_cycles = 6 ; // wait 7 cycles,take into account the current pass
         cycles += 7;
     }
 }
-
-void NMI()
+void exec_nmi()
 {
+    nmi = false ; // reset the nmi ff
     // same as IRQ but we do not check for an interrupt flag
     //write pc then sr to stack
     PUSH_D( cpu.pc );
@@ -519,6 +538,7 @@ void NMI()
     // interrupt request vector is at 0xFFFA and 0xFFFB
     cpu.pc = cpu_read(0xFFFA) | (cpu_read(0xFFFB) << 8) ;
 
+    cur_cycles = 6 ; // take into account the current pass
     cycles += 7;
 }
 void set_flags ( uint16_t operand , uint8_t code )
@@ -536,8 +556,9 @@ void print_status ( int pc , uint8_t opcode )
     uint8_t sr = 0 ;
     sr = pack( &cpu.sr );
     printf("%zu:Instruction:%s pc:%04X A:%02X X:%02X Y:%02X P:%02X SP:%02X CYCLES:%d\n",
-           instr_count++ , inst_name[opcode] , pc  ,
+           instr_count++ + 1 , inst_name[opcode] , pc  ,
            cpu.a_reg ,cpu.x_reg , cpu.y_reg , sr , cpu.sp , cycles + 7 );
+    fflush(stdout) ; // for debugging
 }
 
 static void unpack ( struct sr *current , uint8_t packed )
