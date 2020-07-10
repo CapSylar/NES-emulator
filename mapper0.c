@@ -14,8 +14,6 @@ static uint8_t *chr_rom;
 
 static uint8_t nametables[2][0x400] ; // 2KiB of internal ram
 
-// uint8_t some_ram[0x1000] ; // for blargg tests
-
 //implements mapper0 ( NROM )
 void init_mapper0 ( nes_header header0 )
 {
@@ -80,14 +78,6 @@ void mapper0_ppu_write( uint16_t address , uint8_t data )
 }
 void mapper0_cpu_write( uint16_t address , uint8_t data )
 {
-//    if (address >= 0x6000 && address <= 0x7000 )
-//        some_ram[address - 0x6000 ] = data ;
-//    // print the diagnostics to terminal
-//
-//    for ( int i = 0 ; i < 0x1000 ; ++i )
-//        printf("\n %s \n ", some_ram + 4 ); // starts at 0x6004
-
-
     return ; // this is all ROM
 }
 uint8_t mapper0_cpu_read(  uint16_t address )

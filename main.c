@@ -34,17 +34,24 @@ int main(int argc, char **argv)
     if ( init_interface() )
         return EXIT_FAILURE ;
 
-    int wait = 0; // just for now
+    unsigned wait_inter = 0; // just for now
+    unsigned wait_poll = 0 ;
 
     while ( !halt )
     {
-        if ( wait++ == 89000 )
+        if (wait_inter++ == 89343 ) // 89343
         {
             update_interface();
-            wait = 0 ;
+            wait_inter = 0 ;
         }
+
+        if ( wait_poll++ == 200 )
+        {
+            poll_inputs();
+            wait_poll = 0 ;
+        }
+
         clock_system() ;
     }
-
     return EXIT_SUCCESS;
 }

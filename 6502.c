@@ -558,7 +558,7 @@ void print_status ( int pc , uint8_t opcode )
     printf("%zu:Instruction:%s pc:%04X A:%02X X:%02X Y:%02X P:%02X SP:%02X CYCLES:%d\n",
            instr_count++ + 1 , inst_name[opcode] , pc  ,
            cpu.a_reg ,cpu.x_reg , cpu.y_reg , sr , cpu.sp , cycles + 7 );
-    fflush(stdout) ; // for debugging
+    //fflush(stdout) ; // for debugging
 }
 
 static void unpack ( struct sr *current , uint8_t packed )

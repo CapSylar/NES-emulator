@@ -10,5 +10,6 @@ int init_interface() ;
 void update_interface () ;
 void copy_pattern_table() ;
 void copy_nametables() ;
+void poll_inputs();
 
 #endif //NESX_INTERFACE_H
