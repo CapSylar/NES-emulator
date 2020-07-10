@@ -3,11 +3,11 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_timer.h>
 
-#include "SDL_ttf.h"
 #include <stdbool.h>
 
 #include "interface.h"
 #include "mapper.h"
+#include "controller.h"
 #include "ppu.h"
 
 extern reader mapper_cpu_read , mapper_ppu_read ;
@@ -16,11 +16,12 @@ extern writer mapper_cpu_write , mapper_ppu_write ;
 extern uint32_t color_table[] ;
 
 extern bool halt;
+extern bool poll ; // for the controllers
 extern uint8_t palette[0x20];
 
 uint32_t pattern0_dp [W * H] ;
 uint32_t pattern1_dp [W * H] ;
-uint32_t screen [256 * 240] ;
+uint32_t screen [256 * 240] ; // memory for main display
 
 SDL_Texture *texture;
 SDL_Texture *texture1;
@@ -34,20 +35,14 @@ SDL_Renderer *renderer ;
 
 SDL_Rect pat0 , pat1 , screen0 ;
 
-void copy_main_display();
+void display_nametable();
 
 int init_interface()
 {
-    if ( SDL_Init ( SDL_INIT_AUDIO ) != 0 )
+    if ( SDL_Init ( SDL_INIT_VIDEO ) != 0 )
     {
         fprintf(stderr, "%s\n", SDL_GetError() );
         return 1 ;
-    }
-
-    if ( TTF_Init() == -1 )
-    {
-        fprintf(stderr , "error: %s", SDL_GetError());
-        exit(1);
     }
 
     // fuck this mess TODO: fix the mess in the interface
@@ -64,11 +59,14 @@ int init_interface()
     return 0 ;
 }
 
-void update_interface ()
+void poll_inputs()
 {
     halt = false ;
+    static uint8_t mapped_key ;
+    bool state = false ;
 
     SDL_Event event;
+
     while (SDL_PollEvent(&event))
         switch (event.type)
         {
@@ -76,17 +74,56 @@ void update_interface ()
                 halt = true;
                 break;
 
+            case SDL_KEYUP:
             case SDL_KEYDOWN:
-            case SDL_KEYUP:; // put there because the C standard does not allow for declarations after labels only statements
-                bool state = (event.type == SDL_KEYDOWN);
-                uint8_t mapped_key;
-                switch (event.key.keysym.scancode) {
-                    case SDL_SCANCODE_ESCAPE :
-                        halt = true;
+                state = ( event.type == SDL_KEYDOWN ) ;
+                switch (event.key.keysym.scancode)
+                {
+                    // for controller 1 for now
+                    /*case SDL_SCANCODE_A : // left
+                        mapped_key = (mapped_key & ~0x40) | (0x40 * state );
                         break;
+                    case SDL_SCANCODE_S : // down
+                        mapped_key = (mapped_key & ~0x20) | (0x20 * state );
+                        break;
+                    case SDL_SCANCODE_D : // right
+                        mapped_key = (mapped_key & ~0x80) | (0x80 * state );
+                        break;
+                    case SDL_SCANCODE_W : // up
+                        mapped_key = (mapped_key & ~0x10) | (0x10 * state );
+                        break;
+                    case SDL_SCANCODE_J : // A button
+                        mapped_key = (mapped_key & ~0x01) | (0x01 * state );
+                        break;
+                    case SDL_SCANCODE_K : // B button
+                        mapped_key = (mapped_key & ~0x02) | (0x02 * state );
+                        break;
+                    case SDL_SCANCODE_N : // Select
+                        mapped_key = (mapped_key & ~0x04) | (0x04 * state );
+                        break;
+                    case SDL_SCANCODE_M : // Start
+                        mapped_key = (mapped_key & ~0x08) | (0x08 * state );
+                        break;*/
+                    case SDL_SCANCODE_ESCAPE:
+                        halt = true ;
+                        break ;
+                    default :
+                        break;
+
                 }
+                break ;
+            default:
+                break ;
         }
 
+/*    if ( poll )
+    {
+//        printf("handed %02x as input\n" , mapped_key);
+        update_cntrl1( mapped_key ) ;
+    }*/
+}
+void update_interface ()
+{
     if ( halt )
     {
         SDL_Quit();
@@ -94,7 +131,7 @@ void update_interface ()
     else
     {
         copy_pattern_table() ;
-        copy_main_display();
+        //display_nametable();
 
         surface = SDL_CreateRGBSurfaceFrom( pattern0_dp , W , H , 32 , W * 4 ,
                                             0x00FF0000 ,0x0000FF00 , 0x000000FF , 0xFF000000) ;
@@ -113,11 +150,10 @@ void update_interface ()
         SDL_RenderCopy( renderer , texture1 , NULL , &pat1 ) ;
         SDL_RenderCopy( renderer , texture2 , NULL , &screen0 ) ;
         SDL_RenderPresent( renderer ) ;
-
     }
 }
 
-void copy_main_display()
+void display_nametable() // debug
 {
     // this is where we render the display for now
     for ( int y = 0 ; y < 30 ; ++y )
@@ -125,23 +161,13 @@ void copy_main_display()
         for (int x = 0; x < 32 ; ++x)
         {
             uint8_t offset = mapper_ppu_read( 0x2000 + y * 32 + x );
-            for (uint16_t row = 0; row < 8; ++row)
-            {
-                uint8_t tile_lsb0 = mapper_ppu_read(0x1000 + offset * 16 + row); // 16 to skip pane1
-                uint8_t tile_msb0 = mapper_ppu_read(0x1000 + offset * 16 + row + 8);
-
-                for (uint16_t col = 0; col < 8; ++col)
-                {
-                    uint8_t pixel0 = (tile_lsb0 & 0x01) + (tile_msb0 & 0x01) * 2;
-                    tile_lsb0 >>= 1;
-                    tile_msb0 >>= 1;
-
-                    screen[x * 8 + (7 - col) + (y * 8 + row) * 256] = color_table[ppu_read(0x3F00 + pixel0)];
-                }
-            }
+            printf("%02x ",offset);
         }
+        printf("\n");
     }
+    printf("\n");
 }
+
 void copy_pattern_table()
 {
     for ( uint16_t tileY = 0 ; tileY < 16 ; ++tileY )
