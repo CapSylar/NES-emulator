@@ -27,7 +27,8 @@ extern writer mapper_ppu_write ;
 extern uint32_t screen [256 * 240] ;
 
 // for sprite 0 hit
-bool sprite0 ; // if sprite 0 is in secondary OAM thus it will be loaded into the first unit
+bool nextsc_sprite0 ; // if sprite 0 is possible on the next scanline
+bool nowsc_sprite0 ;  // if sprite 0 hit is possible for the current scanline
 
 // background rendering
 
@@ -115,6 +116,11 @@ uint8_t ppu_read ( uint16_t address ) // 14 lines are actually used
     }
     else if ( address >= 0x3F00 && address <= 0x3FFF ) // palette RAM indexes and mirrors ( fixed wiring )
     {
+        //$3F10/$3F14/$3F18/$3F1C
+        if ( address == 0x3F10 || address == 0x3F14 || address == 0x3F18 || address == 0x3F1C )
+            return palette[0x0F & address] ;
+        else if ( address == 0x3F04 || address == 0x3F08 || address == 0x3F0C )
+            return palette[0] ;
         return palette[0x1f & address] ;
     }
 }
@@ -126,8 +132,13 @@ void ppu_write ( uint16_t address , uint8_t data )
         mapper_ppu_write( address , data ) ;
     }
     else if ( address >= 0x3F00 && address <= 0x3FFF ) // palette RAM indexes and mirrors
-    { // TODO: implement the mirroring of the background in the palette
-        palette[0x001f & address] = data;
+    {
+        if ( address == 0x3F10 || address == 0x3F14 || address == 0x3F18 || address == 0x3F1C ) // pallette mirroring
+            palette[0x0F & address] = data ;
+        else if ( address == 0x3F04 || address == 0x3F08 || address == 0x3F0C )
+            palette[0x3F00] = data;
+        else
+            palette[0x001f & address] = data;
     }
 }
 
@@ -182,18 +193,17 @@ void dma_clock()
         last_read = false;
     }
 }
-
 void fetch_cycle() ;
 void increment_vertical () ;
 void sprite_evaluation();
 void sprite_loading() ;
-
 
 void update_shifters();
 
 // TODO: rewrite ppu_clock function
 void ppu_clock ()
 {
+
     if ( nes_ppu.scanline >= 0 && nes_ppu.scanline <= 239 || nes_ppu.scanline == 261 ) // the visible frame or pre-render
     {
         if ( nes_ppu.dot_counter > 0 && nes_ppu.dot_counter <= 64 && nes_ppu.scanline != 261 ) // Secondary OAM clear
@@ -202,11 +212,13 @@ void ppu_clock ()
         }
         else if ( nes_ppu.dot_counter >= 65 && nes_ppu.dot_counter <= 256 && nes_ppu.scanline != 261 ) // sprite evaluation for next scanline
         {
-            sprite_evaluation() ;
+            if ( nes_ppu.mask.up_mask.show_bg || nes_ppu.mask.up_mask.show_spr )
+                sprite_evaluation() ;
         }
         else if ( nes_ppu.dot_counter >= 257 && nes_ppu.dot_counter <= 320 ) // load the sprites for the next scanline
         {
-            sprite_loading() ;
+            if ( nes_ppu.mask.up_mask.show_spr )
+                sprite_loading() ;
         }
 
         if ( (nes_ppu.dot_counter > 0 && nes_ppu.dot_counter <= 256) ||
@@ -214,36 +226,54 @@ void ppu_clock ()
         {
             if ( nes_ppu.scanline >= 0 && nes_ppu.scanline <= 239 && nes_ppu.dot_counter > 0 && nes_ppu.dot_counter <= 256 ) // in a scanline that renders
             {
-
                 // render and copy pixel to main display memory
 
-                uint8_t bg_pixel = ((low_pattern_sr & (0x8000 >> nes_ppu.fine_x) ) >> 15) + ((hi_pattern_sr & 0x8000) >> 15 )* 2
-                        + ((palette_lo_sr & 0x8000) >> 15 ) * 4 + ((palette_hi_sr & 0x8000 )>> 15 ) * 8 ;
-
-                // extract any pixels from active units
-                uint8_t current_index = 0;
+                uint8_t bg_pixel = 0 ;
                 uint8_t fg_pattern = 0 ;
 
-                for ( int i = 0 ; i < 8 ; ++i )
-                {
-                    if ( !nes_ppu.x_pos[i] ) // found an active sprite
-                    {
-                        current_index = i;
-                        fg_pattern = ((nes_ppu.pattern_lo_sr[i] & 0x80) > 0) | (((nes_ppu.pattern_hi_sr[i] & 0x80) > 0) << 1 );
+                if ( nes_ppu.mask.up_mask.show_bg )
+                    bg_pixel = (( low_pattern_sr & (0x8000 >> nes_ppu.fine_x) ) > 0) + ((hi_pattern_sr & (0x8000 >> nes_ppu.fine_x)) > 0 )* 2
+                            + ((palette_lo_sr & (0x8000 >> nes_ppu.fine_x)) > 0 ) * 4 + ((palette_hi_sr & (0x8000 >> nes_ppu.fine_x)) > 0 ) * 8 ;
 
-                        if ( fg_pattern ) // if not transparent
-                            break ;
+                // extract any pixels from active units
+                uint8_t current_index = 9; // set to an invalid index
+                if ( nes_ppu.mask.up_mask.show_spr )
+                {
+                    for (int i = 0; i < 8; ++i)
+                    {
+                        if (!nes_ppu.x_pos[i]) // found an active sprite
+                        {
+                            fg_pattern = ((nes_ppu.pattern_lo_sr[i] & 0x80) > 0) |
+                                         (((nes_ppu.pattern_hi_sr[i] & 0x80) > 0) << 1);
+
+                            if (fg_pattern) // if not transparent
+                            {
+                                current_index = i;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!(nes_ppu.dot_counter > 0 && nes_ppu.dot_counter <= 8 && !nes_ppu.mask.up_mask.show_spr_l8 &&
+                          !nes_ppu.mask.up_mask.show_bg_l8))
+                    {
+                        if (nowsc_sprite0 && current_index == 0 && bg_pixel &&
+                            nes_ppu.mask.up_mask.show_bg && nes_ppu.mask.up_mask.show_spr && nes_ppu.dot_counter != 256)
+                        {
+                            if ( !nes_ppu.status.up_status.sp_0 )
+                            {
+                                //printf("sprite hit occured on scanline %d\n" , nes_ppu.scanline );
+                            }
+                            nes_ppu.status.up_status.sp_0 = true; // sprite 0 hit!
+                        }
                     }
                 }
-
-                if ( sprite0 && !current_index && bg_pixel )
-                    nes_ppu.status.up_status.sp_0 = true ; // sprite 0 hit!
 
                 // now we have a fg pixel that we can use
                 bool priority = nes_ppu.at_latch[current_index] & 0x20 ;
                 uint16_t used_pixel = 0 ;
 
-                if (!bg_pixel && fg_pattern || bg_pixel && fg_pattern && !priority ) // render sprite
+                if ((!bg_pixel && fg_pattern || bg_pixel && fg_pattern && !priority)) // render sprite
                 {
                     fg_pattern = (nes_ppu.at_latch[current_index] & 0x03) << 2 | fg_pattern ;
                     used_pixel = 0x3F10 | fg_pattern ;
@@ -316,6 +346,7 @@ void ppu_clock ()
     {
         nes_ppu.dot_counter = 0 ;
         nes_ppu.scanline += 1;
+        nowsc_sprite0 = nextsc_sprite0 ;
 
         if ( nes_ppu.scanline > 261 )
             nes_ppu.scanline = 0 ;
@@ -424,7 +455,7 @@ void sprite_evaluation() // TODO: rewrite this function for the love of Jesus
     if ( nes_ppu.dot_counter == 65 ) // called on this dot counter, dirty tricks
     {
         n = m = s_index = spr_num = num = 0;
-        copy_spr = w_dis = halt = sprite0 = false;
+        copy_spr = w_dis = halt = nextsc_sprite0 = false;
     }
 
     if ( halt )
@@ -513,8 +544,8 @@ void sprite_evaluation() // TODO: rewrite this function for the love of Jesus
             }
             else if ( nes_ppu.scanline >= data && nes_ppu.scanline <= (data + 7) )
             {
-                if ( n == 0 ) // sprite 0!!
-                    sprite0 = true ;
+                if ( n == 0 ) // sprite 0
+                    nextsc_sprite0 = true;
 
                 copy_spr = true;
                 ++s_index ;
@@ -537,6 +568,12 @@ void sprite_loading() // no support for 8X16 sprites for now
     static uint16_t difference ;
     static uint16_t address ;
 
+    if ( nes_ppu.ctrl.up_ctrl.spr_h )
+    {
+        fprintf(stderr , "use of unimplemented 16x8 mode ") ;
+        exit(1) ;
+    }
+
     switch ( (nes_ppu.dot_counter-1) % 8)
     {
         case 0: // garbage nametable byte
@@ -549,7 +586,10 @@ void sprite_loading() // no support for 8X16 sprites for now
             break ;
         case 4 : // pattern table tile low
             difference = s_oam[count*4 + 1] ;
-            difference = (difference << 4 )| ( nes_ppu.scanline - s_oam[count * 4] );
+            if ( s_oam[count*4+2] & 0x80 )
+                difference = (difference << 4 )| ( 7 - (nes_ppu.scanline - s_oam[count * 4]) );
+            else
+                difference = (difference << 4 )| ( nes_ppu.scanline - s_oam[count * 4] );
 
             nes_ppu.pattern_lo_sr[count] = ppu_read( address = ((nes_ppu.ctrl.up_ctrl.spr_ts << 12) | difference) ) ;
             if ( nes_ppu.at_latch[count] & 0x40 ) // if needs horizontal flipping
