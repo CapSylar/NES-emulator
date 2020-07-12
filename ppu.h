@@ -79,7 +79,8 @@ typedef union ppu_ctrl ppu_ctrl ;
 typedef union ppu_status ppu_status ;
 typedef union ppu_mask ppu_mask ;
 
-typedef struct {
+typedef struct
+{
     bool odd_cycle;
     int dot_counter , scanline ;
 
