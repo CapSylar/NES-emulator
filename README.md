@@ -12,6 +12,3 @@ a simple NES emualtor written in C, has a debugging interface that displays the 
 
 ### implemented mappers
 -mapper 0
-
-<img src="/screenshots/mario.png" />
-<img src="screenshots/mario.png">
