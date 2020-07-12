@@ -108,7 +108,7 @@ void cpu_write ( uint16_t address , uint8_t data )
                 ppu_oam_write( address , data );
                 break ;
             case 5: // ppu scroll register
-                printf( "first write : %d , at ppu scanline %d\n" , !nes_ppu.w_toggle , nes_ppu.scanline );
+                //printf( "first write : %d , at ppu scanline %d\n" , !nes_ppu.w_toggle , nes_ppu.scanline );
                 if ( !nes_ppu.w_toggle ) // first write
                 {
                     nes_ppu.loopy_t.up_reg.coarse_x = (data >> 3) & 0x1F; // set the fine x scroll
