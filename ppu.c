@@ -444,9 +444,11 @@ void increment_vertical ()
     }
 }
 
+int spr_num ;
+
 void sprite_evaluation() // TODO: rewrite this function for the love of Jesus
 {
-    static int n , m , s_index , spr_num , num ;
+    static int n , m , s_index , num ;
     static uint8_t data;
     static bool copy_spr; // indicated that we are copying a full sprite
     static bool w_dis ; // indicated that writer to secondary OAM are disabled
@@ -585,25 +587,37 @@ void sprite_loading() // no support for 8X16 sprites for now
             nes_ppu.x_pos[count] = s_oam[count*4 + 3] ; // load x position
             break ;
         case 4 : // pattern table tile low
-            difference = s_oam[count*4 + 1] ;
-            if ( s_oam[count*4+2] & 0x80 )
-                difference = (difference << 4 )| ( 7 - (nes_ppu.scanline - s_oam[count * 4]) );
-            else
-                difference = (difference << 4 )| ( nes_ppu.scanline - s_oam[count * 4] );
 
-            nes_ppu.pattern_lo_sr[count] = ppu_read( address = ((nes_ppu.ctrl.up_ctrl.spr_ts << 12) | difference) ) ;
-            if ( nes_ppu.at_latch[count] & 0x40 ) // if needs horizontal flipping
-                flip_byte( &nes_ppu.pattern_lo_sr[count]) ;
+            if ( count >= spr_num ) // load with empty data since these are unsused units
+                nes_ppu.pattern_lo_sr[count] = 0 ; // transparent
+            else
+            {
+                difference = s_oam[count * 4 + 1];
+                if (s_oam[count * 4 + 2] & 0x80)
+                    difference = (difference << 4) | (7 - (nes_ppu.scanline - s_oam[count * 4]));
+                else
+                    difference = (difference << 4) | (nes_ppu.scanline - s_oam[count * 4]);
+
+                nes_ppu.pattern_lo_sr[count] = ppu_read(address = ((nes_ppu.ctrl.up_ctrl.spr_ts << 12) | difference));
+                if (nes_ppu.at_latch[count] & 0x40) // if needs horizontal flipping
+                    flip_byte(&nes_ppu.pattern_lo_sr[count]);
+            }
             break ;
         case 6 : // pattern table tile high
+            if ( count >= spr_num )
+                nes_ppu.pattern_hi_sr[count] = 0 ;
+            else
+            {
+                nes_ppu.pattern_hi_sr[count] = ppu_read(address + 8);
 
-            nes_ppu.pattern_hi_sr[count] = ppu_read( address + 8 ) ;
+                if (nes_ppu.at_latch[count] & 0x40) // if needs horizontal flipping
+                    flip_byte(&nes_ppu.pattern_hi_sr[count]);
 
-            if ( nes_ppu.at_latch[count] & 0x40 ) // if needs horizontal flipping
-                flip_byte( &nes_ppu.pattern_hi_sr[count] ) ;
+            }
 
-            if ( ++count == 8 )
-                count = 0 ;
+            if (++count == 8)
+                count = 0;
+
             break ;
     }
 }

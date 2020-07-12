@@ -1,12 +1,17 @@
 # NES-emulator
-For now, the 6502 passes NESTEST, and the emulator has a small debugging interface that displays the pattern tables
+a simple NES emualtor written in C, has a debugging interface that displays the pattern tables
+
+### Building
+- to build the project run ```cmake CMakeLists.txt``` and then ```make <makefileName>```
 
 ### working on 
-- ppu
+- apu
+- refactoring the project 
+- perfecting the ppu
 - debugging interface
-### TODO
-- add the APU
-- add different mappers
 
 ### implemented mappers
 -mapper 0
+
+<img src="/screenshots/mario.png" />
+<img src="screenshots/mario.png">
