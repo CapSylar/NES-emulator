@@ -1,7 +1,5 @@
 #include <stdint.h>
 #include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
 
 bool poll ;
 static uint8_t w_4016 ;

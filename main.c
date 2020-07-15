@@ -5,15 +5,13 @@
 cpu_6502 cpu;
 ppu_state nes_ppu ;
 
-extern uint8_t internal_ram[0x800];
-
 bool halt ;
 
 int main(int argc, char **argv)
 {
     if (argc < 2)
     {
-        fprintf(stderr, "Please enter binary file name\n");
+        fprintf(stderr, "Please enter rom file name\n");
         return EXIT_FAILURE;
     }
 

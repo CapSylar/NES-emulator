@@ -494,6 +494,8 @@ void cpu_clock ()
             set_flags ( temp , 7 ) ;
             cpu.a_reg = temp ;
             break ;
+        default:
+            fprintf( stderr , "error: use of unofficial opcode\n");
     }
 }
 

@@ -1,12 +1,5 @@
 #include "mapper0.h"
-#include "mapper.h"
 #include <stdint.h>
-
-typedef uint8_t (*reader)(uint16_t) ;
-typedef void (*writer)( uint16_t , uint8_t ) ;
-
-extern reader mapper_cpu_read , mapper_ppu_read;
-extern writer mapper_cpu_write , mapper_ppu_write;
 
 static nes_header header;
 static uint8_t *prg_rom;
@@ -15,23 +8,26 @@ static uint8_t *chr_rom;
 static uint8_t nametables[2][0x400] ; // 2KiB of internal ram
 
 //implements mapper0 ( NROM )
-void init_mapper0 ( nes_header header0 )
+void init_mapper0 ( nes_header header0 , reader *mapper_cpu_read , reader *mapper_ppu_read , writer *mapper_cpu_write,
+                                    writer *mapper_ppu_write )
 {
     header = header0 ;
     prg_rom = header0.prg_mem ;
     chr_rom = header0.chr_mem ;
 
     // assign the mapper0 function to the used mapping function ( set mapper0 )
-    mapper_cpu_read = mapper0_cpu_read;
-    mapper_cpu_write = mapper0_cpu_write ;
-    mapper_ppu_read = mapper0_ppu_read ;
-    mapper_ppu_write = mapper0_ppu_write ;
+    *mapper_cpu_read = mapper0_cpu_read;
+    *mapper_cpu_write = mapper0_cpu_write ;
+    *mapper_ppu_read = mapper0_ppu_read ;
+    *mapper_ppu_write = mapper0_ppu_write ;
 }
 
 uint8_t mapper0_ppu_read ( uint16_t address )
 {
     if ( address >= 0 && address <= 0x1FFF ) // pattern tables
-        return chr_rom[address] ;
+    {
+            return chr_rom[address];
+    }
     else if ( address >= 0x2000 && address <= 0x3EFF ) // nametables and mirrors
     {
         uint16_t temp = address & 0x0FFF ;
@@ -54,8 +50,7 @@ uint8_t mapper0_ppu_read ( uint16_t address )
 void mapper0_ppu_write( uint16_t address , uint8_t data )
 {
         if ( address >= 0 && address <= 0x1FFF ) // pattern tables
-            //chr_rom[address] = data;
-            return; // all ROM
+            chr_rom[address] = data;
         else if ( address >= 0x2000 && address <= 0x3EFF ) // nametables and mirrors
         {
             uint16_t temp = address & 0x0FFF ;
@@ -73,7 +68,6 @@ void mapper0_ppu_write( uint16_t address , uint8_t data )
                 else
                     nametables[1][ (temp & 0xBFF) -0x800] = data; // mirror 2 and 3
             }
-
         }
 }
 void mapper0_cpu_write( uint16_t address , uint8_t data )

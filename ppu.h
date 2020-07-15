@@ -11,7 +11,6 @@ uint8_t ppu_oam_read( uint8_t address ) ;
 void dma_start ( uint8_t page_start ) ;
 void dma_clock() ;
 
-
 typedef union loopy_reg
 {
     struct
@@ -81,7 +80,7 @@ typedef union ppu_mask ppu_mask ;
 
 typedef struct
 {
-    bool odd_cycle;
+    bool odd_frame ;
     int dot_counter , scanline ;
 
     //for the sprites

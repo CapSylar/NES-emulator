@@ -1,6 +1,7 @@
+// this file represents the 'bus' of a NES as well as the read/write interface between the different components
+
 #include <SDL_scancode.h>
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_timer.h>
 
 #include "6502.h"
 #include "ppu.h"
@@ -9,13 +10,14 @@
 
 uint8_t internal_ram[0x800] ; // NES only has 2KB of internal RAM from 0000 to 07FFF
 extern ppu_state nes_ppu ;
+extern uint8_t palette[] ;
 
 bool nmi ;
 bool dma_on ;
 extern bool poll ;
 
 // global system cycle count 0-3
-int cycle_count;
+int cycle_count = 1;
 
 // function pointers for the current used mapper
 reader mapper_cpu_read , mapper_ppu_read ;
@@ -71,9 +73,7 @@ uint8_t cpu_read ( uint16_t address )
     else if ( address >= 4000 && address <= 0x401F ) // NES APU and audio
     {
         if (address == 0x4016)
-        {
-            return read_controller1();
-        }
+            return read_controller1() ;
 
         //TODO : implement the nes apu and io
         return 0;
@@ -81,7 +81,6 @@ uint8_t cpu_read ( uint16_t address )
     else // from 0x4020 to 0xFFFF which is Cartridge space
         return mapper_cpu_read(address);
 }
-
 void cpu_write ( uint16_t address , uint8_t data )
 {
     if ( address >= 0 && address <= 0x1FFF ) // RAM with mirrors
@@ -108,7 +107,7 @@ void cpu_write ( uint16_t address , uint8_t data )
                 ppu_oam_write( address , data );
                 break ;
             case 5: // ppu scroll register
-                //printf( "first write : %d , at ppu scanline %d\n" , !nes_ppu.w_toggle , nes_ppu.scanline );
+                //printf( "first write : %d , at ppu scanline %d , at ppu dot count: %d\n" , !nes_ppu.w_toggle , nes_ppu.scanline , nes_ppu.dot_counter);
                 if ( !nes_ppu.w_toggle ) // first write
                 {
                     nes_ppu.loopy_t.up_reg.coarse_x = (data >> 3) & 0x1F; // set the fine x scroll
@@ -163,6 +162,40 @@ void cpu_write ( uint16_t address , uint8_t data )
         mapper_cpu_write ( address , data ) ;
 }
 
+uint8_t ppu_read ( uint16_t address ) // 14 lines are actually used
+{
+    if ( address >= 0x0000 && address <= 0x3EFF ) // ( cartridge dependant )
+    {
+        return mapper_ppu_read(address);
+    }
+    else if ( address >= 0x3F00 && address <= 0x3FFF ) // palette RAM indexes and mirrors ( fixed wiring )
+    {
+        //$3F10/$3F14/$3F18/$3F1C
+        if ( address == 0x3F10 || address == 0x3F14 || address == 0x3F18 || address == 0x3F1C )
+            return palette[0x0F & address] ;
+        else if ( address == 0x3F04 || address == 0x3F08 || address == 0x3F0C )
+            return palette[0] ;
+        return palette[0x1f & address] ;
+    }
+}
+
+void ppu_write ( uint16_t address , uint8_t data )
+{
+    if ( address >= 0x0000 && address <= 0x3EFF )
+    {
+        mapper_ppu_write( address , data ) ;
+    }
+    else if ( address >= 0x3F00 && address <= 0x3FFF ) // palette RAM indexes and mirrors
+    {
+        if ( address == 0x3F10 || address == 0x3F14 || address == 0x3F18 || address == 0x3F1C ) // pallette mirroring
+            palette[0x0F & address] = data ;
+        else if ( address == 0x3F04 || address == 0x3F08 || address == 0x3F0C )
+            palette[0x3F00] = data;
+        else
+            palette[0x001f & address] = data;
+    }
+}
+
 void clock_system()
 {
     if ( cycle_count % 3 == 0 )
@@ -174,14 +207,9 @@ void clock_system()
             uint8_t mapped_key = 0 ;
             const uint8_t *state = SDL_GetKeyboardState(NULL) ;
 
-            mapped_key = (mapped_key & ~0x04) | (0x04 * state[SDL_SCANCODE_N] );
-            mapped_key = (mapped_key & ~0x40) | (0x40 * state[SDL_SCANCODE_A] );
-            mapped_key = (mapped_key & ~0x20) | (0x20 * state[SDL_SCANCODE_S] );
-            mapped_key = (mapped_key & ~0x80) | (0x80 * state[SDL_SCANCODE_D] );
-            mapped_key = (mapped_key & ~0x10) | (0x10 * state[SDL_SCANCODE_W] );
-            mapped_key = (mapped_key & ~0x01) | (0x01 * state[SDL_SCANCODE_J] );
-            mapped_key = (mapped_key & ~0x02) | (0x02 * state[SDL_SCANCODE_K] );
-            mapped_key = (mapped_key & ~0x08) | (0x08 * state[SDL_SCANCODE_M] );
+            mapped_key = (state[SDL_SCANCODE_D] << 7) + (state[SDL_SCANCODE_A] << 6) + (state[SDL_SCANCODE_S] << 5) +
+                    (state[SDL_SCANCODE_W] << 4) + (state[SDL_SCANCODE_M] << 3) + (state[SDL_SCANCODE_N] << 2) +
+                    (state[SDL_SCANCODE_K] << 1) + state[SDL_SCANCODE_J] ;
 
             update_cntrl1(mapped_key) ;
         }
@@ -193,12 +221,12 @@ void clock_system()
         {
             cpu_clock();
         }
-
-        if ( cycle_count == 6 ) // we go 1 2 |3| 4 5 |6| => 1
-            cycle_count = 1 ;
-
     }
 
     ppu_clock() ;
-    ++cycle_count ;
+
+    if ( cycle_count == 6 ) // we go 1 2 |3| 4 5 |6| => 1
+        cycle_count = 1 ;
+    else
+        ++cycle_count ;
 }

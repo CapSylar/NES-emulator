@@ -3,6 +3,11 @@
 #include "mapper.h"
 #include <stdlib.h>
 #include "mapper0.h"
+#include "mapper2.h"
+#include "mapper3.h"
+
+extern reader mapper_cpu_read , mapper_ppu_read;
+extern writer mapper_cpu_write , mapper_ppu_write;
 
 void load_cartridge ( FILE *fp ) // creates the nes header struct for the mapper and reads in the entire file
 {
@@ -30,21 +35,27 @@ void load_cartridge ( FILE *fp ) // creates the nes header struct for the mapper
     // allocate memory for the prg and chr roms
 
     uint8_t* prg_mem = malloc ( 0x4000 * header.prg_rom_count ) ; // 16KiB units
-    uint8_t* chr_mem = malloc( 0x2000 * header.chr_rom_count ); // 8 KiB units
+    uint8_t* chr_mem = malloc( 0x2000 * (header.chr_rom_count ? header.chr_rom_count : 1) ); // 8 KiB units
 
     header.prg_mem = prg_mem ;
     header.chr_mem = chr_mem ;
 
     for ( int i = 0 ; i < header.prg_rom_count * 0x4000 ; ++i ) // copy the prg memory
         prg_mem[i] = getc(fp) ;
-    for ( int i = 0 ; i < header.chr_rom_count * 0x2000 ; ++i ) // copy the chr memory
+    for ( int i = 0 ; i < (header.chr_rom_count ? header.chr_rom_count : 1) * 0x2000 ; ++i ) // copy the chr memory
         chr_mem[i] = getc(fp) ;
 
     switch ( mapper ) // call the appropriate init function for the mapper that will be used
     {
         case 0: // NROM
-            init_mapper0( header ) ;
+            init_mapper0( header , &mapper_cpu_read , &mapper_ppu_read , &mapper_cpu_write , &mapper_ppu_write ) ;
             break;
+        case 2: // UNROM, UOROM
+            init_mapper2( header , &mapper_cpu_read , &mapper_ppu_read , &mapper_cpu_write , &mapper_ppu_write ) ;
+            break ;
+        case 3: // CNROM
+            init_mapper3( header , &mapper_cpu_read , &mapper_ppu_read , &mapper_cpu_write , &mapper_ppu_write ) ;
+            break ;
         default:
             fprintf( stderr , "unimplemented mapper %d" , mapper ) ;
             exit(EXIT_FAILURE) ;
